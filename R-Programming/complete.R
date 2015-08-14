@@ -6,5 +6,5 @@ complete <- function(directory, id = 1:332) {
         report    <- append(report, sum(compCases), after = length(report))
     }
     output <- data.frame(id = id, nods = report)
-    print(output)   
+    #print(output)
 }
