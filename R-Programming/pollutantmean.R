@@ -1,4 +1,4 @@
-pollutantmean <- function(directory, id = 1:332) {
+pollutantmean <- function(directory, pollutant, id = 1:332) {
     intAirData <- NA
     for(i in id) {
         airData    <- read.csv(paste(directory, "/", sprintf("%03d", i), ".csv", sep=''))

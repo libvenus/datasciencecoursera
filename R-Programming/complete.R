@@ -5,6 +5,7 @@ complete <- function(directory, id = 1:332) {
         compCases <- complete.cases(airData)
         report    <- append(report, sum(compCases), after = length(report))
     }
-    output <- data.frame(id = id, nods = report)
-    #print(output)
+    output <- data.frame(id = id, nobs = report)
+    
+    return (output)
 }
