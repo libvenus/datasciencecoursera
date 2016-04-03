@@ -1,0 +1,124 @@
+#**Prediction - "*how well they do it*?"**
+
+In this report we will analyze the personal activity data collected for 6 participants using "Human Activity Recognition" gadgets like accelerometers on the belt, forearm, arm, and dumbell used by the participants. The participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways and we will predict the manner in which they did the exercise. More details about "Human Activity Recognition" can be found at http://groupware.les.inf.puc-rio.br/har
+
+#Prediction study design
+The prediction study design is composed of the following sequence of steps:
+
+####Question -> Input Data -> Features -> M/C Algorithm -> Parameters -> Evaluation
+
+There are 2 datasets provided - training and testing.We will use the testing dataset for validation purposes and not touch it until the model is finalized. The training dataset will be split into two, one for exploration and model creation and the other for testing purposes. 
+
+High level steps that we will follow for this study design:
+
+####1. Exploration to identify keys features of the dataset
+####2. Pre-processing
+####3. Multiple Model creation and best fit selection
+####4. Out-of-sample application and errors
+
+#Exploration
+Let us first load the relevant datasets and perform some explorations to find some trends and observations
+```{r,echo = FALSE}
+suppressMessages(suppressMessages(library(caret)))
+suppressMessages(suppressWarnings(library(rattle)))
+suppressMessages(suppressWarnings(library(rpart)))
+suppressMessages(suppressWarnings(library(randomForest)))
+set.seed(32335)
+trainFile <- download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "./training.csv")
+testFile <- download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "./testing.csv")
+training0   <- read.csv("./training.csv", header = TRUE)
+validation <- read.csv("./testing.csv", header = TRUE)
+
+training0 <- training0[,-1] #get rid of X, the very first column
+inTrain <- createDataPartition(training0$classe, p = .70, list = FALSE)
+training <- training0[inTrain,]
+testing <- training0[-inTrain,]
+```
+Dimensions of the training, testing and validation datasets:
+```{r,echo = FALSE}
+dim(training)
+dim(testing)
+dim(validation)
+```
+No of variables/columns in the training dataset with more than 95% NA values:  
+```{r,echo = FALSE}
+naPercentGt95 <- NA
+blankPercentGt95 <- NA
+
+for(i in 1:dim(training)[2]) naPercentGt95[i] = (sum(is.na(training[,i]))/dim(training)[1] * 100) > 95
+sum(naPercentGt95)
+```
+No of variables/columns in the training dataset with more than 95% items with no observations(blanks).
+```{r,echo = FALSE}
+for(i in 1:dim(training)[2]) blankPercentGt95[i] = ((sum((training[,i] == "") * 1)/dim(training)[1]) * 100) > 95
+blankPercentGt95[is.na(blankPercentGt95)] <- FALSE
+sum((blankPercentGt95 == TRUE) * 1)
+```
+So there are around 159 variables/columns in the training dataset of which 67 have 95% or more observations as NA.Along with NAs we can also see columns with lots of blank entries.Variables/columns with blank values are similar to variables with near-zero-variance as they do not posses any specific feature that adds meaning to the dataset. Hence it makes sense to remove them from the model as prediction models don't fare well with input data containing NAs or blanks. Also imputing using methods like K-nearest neighbours(knnImpute) will not work as the columns are highly sparse.
+
+The summary statistics of the whole training dataset will be pretty huge so lets summarize the outcome variable - "classe"
+```{r, echo = FALSE}
+summary(training$classe)
+str(training$classe)
+```
+"classe" the variable we are trying to predict is a factor variable with 5 levels.
+
+#Pre-Processing
+As we saw while exploring the training dataset that it has variables more than 95% NA and blank values and it makes sense to get rid of them first and examine how many variables are we left with.
+```{r, echo = FALSE}
+naPercentGt95 <- NA
+blankPercentGt95 <- NA
+n1Training <- NA
+nTraining <- NA
+for(i in 1:dim(training)[2]) naPercentGt95[i] = (sum(is.na(training[,i]))/dim(training)[1] * 100) > 95
+n1Training <- training[, naPercentGt95==0]
+
+for(i in 1:dim(n1Training)[2]) blankPercentGt95[i] = ((sum((n1Training[,i] == "") * 1)/dim(n1Training)[1]) * 100) > 95
+nTraining <- n1Training[, blankPercentGt95==FALSE]
+```
+
+```{r, echo = TRUE}
+dim(nTraining)
+```
+So we are left with 59 variables
+
+#Model creation and selection
+
+We will first apply Linear Discriminat Analysis, followed by Decision trees and then use the most accurate Random forests with boosting.
+
+###Linear Discriminant Analysis
+The reason why we have chosen LDA is because the other linear models like Generalized Linear Models and Linear Models are not typically suited to predict outcomes with more than 2-classes("classe" is a factor variable with 5 levels).
+```{r, echo = FALSE}
+nTesting <- NA
+nTesting <- testing[, names(testing) %in% colnames(nTraining)]
+suppressMessages(suppressWarnings(modelFit <- train(classe ~ ., method = "lda", data = nTraining)))
+suppressMessages(suppressWarnings(confusionMatrix(nTesting$classe, predict(modelFit, nTesting))))
+```
+So we can see that the model has around 85% accuracy 
+
+###Decision Trees
+Now that we have considered a model(LDA) that does well with linear relationships let us apply decision tree based model which is easy to interpret and does better with nonlinear settings
+```{r, echo = FALSE}
+suppressMessages(suppressWarnings(modelFit <- rpart(classe ~ ., data=nTraining, method="class")))
+suppressWarnings(confusionMatrix(nTesting$classe, predict(modelFit, nTesting, type = "class")))
+```
+With decision trees the accuracy is around 86%. Let us plot the decision tree in pictorial format like a dendogram as it is better for understanding purposes
+
+```{r, echo = FALSE}
+fancyRpartPlot(modelFit)
+```
+
+###Random Forests
+Random forests is an extension to Bagging(Bootstrap Aggregation) for classification and regression trees and along with boosting it is considered as one of the most accurate prediction algorithm.
+```{r, echo = FALSE}
+tc <- trainControl(method = "cv", number = 7, verboseIter=FALSE , preProcOptions="pca", allowParallel=TRUE)
+suppressMessages(suppressWarnings(modelFit <- train(classe ~ ., data = nTraining, method = "rf", trControl= tc)))
+suppressMessages(suppressWarnings(confusionMatrix(nTesting$classe, predict(modelFit, nTesting))))
+```
+So we can see that our model built using Random Forests algorithm has a 100% accuracy.
+
+#Out-of-sample application and errors
+All the models made in the last step were applied to the testing set carved out of the training dataset. This is called in-sample analysis and its application resulted in in-sample errors. It is generally observed that in-sample application is generally more optimistic as we have already explored, pre-processed and tunned the input dataset. To get an honest prediction accuracy we must apply out best model to a dataset that is untouched(validation dataset here). The validation dataset doesn't have the "classe" outcome variable. We will be predict the outcome and out-of-sample error using the Random Forests model and predictors present in the validation dataset.
+```{r, echo = FALSE}
+predict(modelFit, validation)
+```
